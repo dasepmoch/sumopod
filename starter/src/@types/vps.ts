@@ -79,6 +79,15 @@ export type PurchaseOrderResponse = {
     }
 }
 
+export type ProvisionVpsFromOrderInput = {
+    hostname: string
+    ipAddress: string
+    os: string
+    username: string
+    password?: string
+    expiresAt?: string
+}
+
 export type VpsInstance = {
     id: number
     userId: number

@@ -3,6 +3,7 @@ import type {
     AdminProduct,
     Order,
     Product,
+    ProvisionVpsFromOrderInput,
     ProviderAccount,
     PurchaseOrderResponse,
     VpsInstance,
@@ -169,10 +170,14 @@ export function apiAdminGetVps() {
     })
 }
 
-export function apiAdminCreateVpsFromOrder(orderId: number) {
+export function apiAdminCreateVpsFromOrder(
+    orderId: number,
+    data: ProvisionVpsFromOrderInput,
+) {
     return ApiService.fetchDataWithAxios<VpsInstance>({
         url: `/admin/vps/from-order/${orderId}`,
         method: 'post',
+        data,
     })
 }
 

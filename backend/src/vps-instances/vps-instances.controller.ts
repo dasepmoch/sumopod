@@ -15,6 +15,7 @@ import { Roles } from '../auth/decorators/roles.decorator'
 import { CurrentUser } from '../auth/decorators/current-user.decorator'
 import { VpsInstancesService } from './vps-instances.service'
 import {
+    ProvisionVpsFromOrderDto,
     UpdateVpsInstanceDto,
     UpdateVpsStatusDto,
 } from './dto/vps-instance.dto'
@@ -51,8 +52,11 @@ export class AdminVpsInstancesController {
     }
 
     @Post('from-order/:orderId')
-    createFromOrder(@Param('orderId', ParseIntPipe) orderId: number) {
-        return this.service.createFromOrder(orderId)
+    createFromOrder(
+        @Param('orderId', ParseIntPipe) orderId: number,
+        @Body() dto: ProvisionVpsFromOrderDto,
+    ) {
+        return this.service.createFromOrder(orderId, dto)
     }
 
     @Patch(':id')

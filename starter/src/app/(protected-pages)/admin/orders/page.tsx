@@ -1,12 +1,16 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import axios from 'axios'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
+import Dialog from '@/components/ui/Dialog'
+import Input from '@/components/ui/Input'
 import Table from '@/components/ui/Table'
 import Spinner from '@/components/ui/Spinner'
 import toast from '@/components/ui/toast'
 import Notification from '@/components/ui/Notification'
+import { FormItem } from '@/components/ui/Form'
 import {
     apiAdminApproveOrder,
     apiAdminCancelOrder,
@@ -15,7 +19,6 @@ import {
 } from '@/services/VpsService'
 import { OrderStatusTag } from '../../_shared/StatusTag'
 import { formatDate, formatIDR } from '../../_shared/statusHelpers'
-import { useRouter } from 'next/navigation'
 import type { Order } from '@/@types/vps'
 
 const { Tr, Th, Td, THead, TBody } = Table
@@ -27,11 +30,31 @@ const notify = (title: string, type: 'success' | 'danger', msg: string) =>
         </Notification>,
     )
 
+const getErrorMessage = (error: unknown) => {
+    if (!axios.isAxiosError(error)) {
+        return 'Could not provision VPS.'
+    }
+
+    const message = error.response?.data?.message
+    if (Array.isArray(message)) {
+        return message.join(', ')
+    }
+    return typeof message === 'string' ? message : 'Could not provision VPS.'
+}
+
 const AdminOrdersPage = () => {
-    const router = useRouter()
     const [orders, setOrders] = useState<Order[]>([])
     const [loading, setLoading] = useState(true)
     const [busyId, setBusyId] = useState<number | null>(null)
+    const [provisioningOrder, setProvisioningOrder] = useState<Order | null>(
+        null,
+    )
+    const [form, setForm] = useState({
+        ipAddress: '',
+        username: '',
+        password: '',
+        expiresAt: '',
+    })
 
     const load = () => {
         setLoading(true)
@@ -70,18 +93,53 @@ const AdminOrdersPage = () => {
         }
     }
 
-    const handleCreateVps = async (id: number) => {
-        try {
-            setBusyId(id)
-            const vps = await apiAdminCreateVpsFromOrder(id)
-            notify('VPS created', 'success', 'Now fill in the VPS details.')
-            router.push(`/admin/vps?focus=${vps.id}`)
-        } catch {
+    const openProvisionForm = (order: Order) => {
+        setProvisioningOrder(order)
+        setForm({
+            ipAddress: '',
+            username: '',
+            password: '',
+            expiresAt: '',
+        })
+    }
+
+    const closeProvisionForm = () => {
+        if (busyId === provisioningOrder?.id) {
+            return
+        }
+        setProvisioningOrder(null)
+    }
+
+    const handleCreateVps = async () => {
+        if (!provisioningOrder) {
+            return
+        }
+        if (!form.ipAddress.trim() || !form.username.trim()) {
             notify(
-                'Failed',
+                'Missing details',
                 'danger',
-                'Could not create VPS. Approve the order first.',
+                'IP address and username are required.',
             )
+            return
+        }
+
+        try {
+            setBusyId(provisioningOrder.id)
+            await apiAdminCreateVpsFromOrder(provisioningOrder.id, {
+                hostname: provisioningOrder.vpsName,
+                ipAddress: form.ipAddress.trim(),
+                os: provisioningOrder.selectedOs || '',
+                username: form.username.trim(),
+                password: form.password.trim() || undefined,
+                expiresAt: form.expiresAt
+                    ? new Date(form.expiresAt).toISOString()
+                    : undefined,
+            })
+            notify('VPS provisioned', 'success', 'The VPS is now active.')
+            setProvisioningOrder(null)
+            load()
+        } catch (error) {
+            notify('Provisioning failed', 'danger', getErrorMessage(error))
         } finally {
             setBusyId(null)
         }
@@ -91,7 +149,9 @@ const AdminOrdersPage = () => {
         <div>
             <div className="mb-6">
                 <h3 className="mb-1">Orders</h3>
-                <p className="text-gray-500">Review and approve user orders</p>
+                <p className="text-gray-500">
+                    Provision paid orders with server connection details
+                </p>
             </div>
             <Card>
                 {loading ? (
@@ -139,7 +199,9 @@ const AdminOrdersPage = () => {
                                                     <Button
                                                         size="xs"
                                                         variant="solid"
-                                                        loading={busyId === o.id}
+                                                        loading={
+                                                            busyId === o.id
+                                                        }
                                                         onClick={() =>
                                                             handleApprove(o.id)
                                                         }
@@ -148,7 +210,9 @@ const AdminOrdersPage = () => {
                                                     </Button>
                                                     <Button
                                                         size="xs"
-                                                        loading={busyId === o.id}
+                                                        loading={
+                                                            busyId === o.id
+                                                        }
                                                         onClick={() =>
                                                             handleCancel(o.id)
                                                         }
@@ -157,18 +221,16 @@ const AdminOrdersPage = () => {
                                                     </Button>
                                                 </>
                                             )}
-                                            {(o.status === 'approved' ||
-                                                o.status ===
-                                                    'provisioning') && (
+                                            {o.status === 'paid' && (
                                                 <Button
                                                     size="xs"
                                                     variant="solid"
                                                     loading={busyId === o.id}
                                                     onClick={() =>
-                                                        handleCreateVps(o.id)
+                                                        openProvisionForm(o)
                                                     }
                                                 >
-                                                    Create VPS
+                                                    Provision VPS
                                                 </Button>
                                             )}
                                         </div>
@@ -179,6 +241,86 @@ const AdminOrdersPage = () => {
                     </Table>
                 )}
             </Card>
+
+            <Dialog
+                isOpen={Boolean(provisioningOrder)}
+                onClose={closeProvisionForm}
+                onRequestClose={closeProvisionForm}
+            >
+                <h5 className="mb-1">Provision VPS</h5>
+                <p className="mb-4 text-sm text-gray-500">
+                    Create an active VPS from paid order #
+                    {provisioningOrder?.id}.
+                </p>
+                <FormItem label="Hostname">
+                    <Input value={provisioningOrder?.vpsName || ''} readOnly />
+                </FormItem>
+                <FormItem label="Operating System">
+                    <Input
+                        value={provisioningOrder?.selectedOs || ''}
+                        readOnly
+                    />
+                </FormItem>
+                <FormItem label="IP Address">
+                    <Input
+                        value={form.ipAddress}
+                        placeholder="103.10.20.30"
+                        onChange={(event) =>
+                            setForm({
+                                ...form,
+                                ipAddress: event.target.value,
+                            })
+                        }
+                    />
+                </FormItem>
+                <FormItem label="Username">
+                    <Input
+                        value={form.username}
+                        placeholder="root"
+                        onChange={(event) =>
+                            setForm({
+                                ...form,
+                                username: event.target.value,
+                            })
+                        }
+                    />
+                </FormItem>
+                <FormItem label="Password (optional)">
+                    <Input
+                        type="password"
+                        autoComplete="new-password"
+                        value={form.password}
+                        onChange={(event) =>
+                            setForm({
+                                ...form,
+                                password: event.target.value,
+                            })
+                        }
+                    />
+                </FormItem>
+                <FormItem label="Expiry Date (optional)">
+                    <Input
+                        type="date"
+                        value={form.expiresAt}
+                        onChange={(event) =>
+                            setForm({
+                                ...form,
+                                expiresAt: event.target.value,
+                            })
+                        }
+                    />
+                </FormItem>
+                <div className="flex justify-end gap-2 mt-2">
+                    <Button onClick={closeProvisionForm}>Cancel</Button>
+                    <Button
+                        variant="solid"
+                        loading={busyId === provisioningOrder?.id}
+                        onClick={handleCreateVps}
+                    >
+                        Provision VPS
+                    </Button>
+                </div>
+            </Dialog>
         </div>
     )
 }

@@ -1,13 +1,14 @@
 import {
     BadRequestException,
+    ConflictException,
     ForbiddenException,
     Injectable,
     NotFoundException,
 } from '@nestjs/common'
-import { OrderStatus, ProvisioningType, VpsStatus } from '@prisma/client'
+import { OrderStatus, Prisma, VpsStatus } from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
-import { ProvidersService } from '../providers/providers.service'
 import {
+    ProvisionVpsFromOrderDto,
     UpdateVpsInstanceDto,
     UpdateVpsStatusDto,
 } from './dto/vps-instance.dto'
@@ -23,10 +24,7 @@ const STATUS_TRANSITIONS: Record<VpsStatus, VpsStatus[]> = {
 
 @Injectable()
 export class VpsInstancesService {
-    constructor(
-        private prisma: PrismaService,
-        private providers: ProvidersService,
-    ) {}
+    constructor(private prisma: PrismaService) {}
 
     // ---- User ----
     findMy(userId: number) {
@@ -57,99 +55,94 @@ export class VpsInstancesService {
         })
     }
 
-    /**
-     * Create a VPS instance from an approved order.
-     * Snapshots the product spec, links the provider account, and runs the
-     * matching provider adapter. Manual products stay in "provisioning" until
-     * the admin fills connection details.
-     */
-    async createFromOrder(orderId: number) {
-        const order = await this.prisma.order.findUnique({
-            where: { id: orderId },
-            include: { product: true },
-        })
-        if (!order) {
-            throw new NotFoundException('Order not found')
-        }
-        if (
-            order.status !== OrderStatus.approved &&
-            order.status !== OrderStatus.provisioning
-        ) {
-            throw new BadRequestException(
-                `Order must be approved first (current: ${order.status})`,
-            )
+    async createFromOrder(orderId: number, dto: ProvisionVpsFromOrderDto) {
+        if (orderId < 1) {
+            throw new BadRequestException('orderId must be a positive integer')
         }
 
-        const existing = await this.prisma.vpsInstance.findFirst({
-            where: { orderId },
-        })
-        if (existing) {
-            throw new BadRequestException(
-                'A VPS instance already exists for this order',
-            )
-        }
+        try {
+            return await this.prisma.$transaction(async (transaction) => {
+                const order = await transaction.order.findUnique({
+                    where: { id: orderId },
+                    include: { product: true },
+                })
+                if (!order) {
+                    throw new NotFoundException('Order not found')
+                }
 
-        const product = order.product
-        const providerAccount = await this.prisma.providerAccount.findUnique({
-            where: { id: product.providerAccountId },
-        })
+                const existing = await transaction.vpsInstance.findUnique({
+                    where: { orderId },
+                })
+                if (existing) {
+                    throw new ConflictException(
+                        'A VPS instance already exists for this order',
+                    )
+                }
+                if (order.status !== OrderStatus.paid) {
+                    throw new BadRequestException(
+                        `Only paid orders can be provisioned (current: ${order.status})`,
+                    )
+                }
+                if (dto.hostname !== order.vpsName) {
+                    throw new BadRequestException(
+                        'Hostname must match the paid order',
+                    )
+                }
+                if (order.selectedOs && dto.os !== order.selectedOs) {
+                    throw new BadRequestException(
+                        'Operating system must match the paid order',
+                    )
+                }
 
-        // Mark order as provisioning while we set things up.
-        await this.prisma.order.update({
-            where: { id: orderId },
-            data: { status: OrderStatus.provisioning },
-        })
+                const product = order.product
+                const vps = await transaction.vpsInstance.create({
+                    data: {
+                        userId: order.userId,
+                        orderId: order.id,
+                        productId: product.id,
+                        providerAccountId: product.providerAccountId,
+                        vpsName: dto.hostname,
+                        provider: product.provider,
+                        region: product.region,
+                        operatingSystem: dto.os,
+                        cpu: product.cpu,
+                        ram: product.ram,
+                        storage: product.storage,
+                        bandwidth: product.bandwidth,
+                        transfer: product.transfer,
+                        ipAddress: dto.ipAddress,
+                        username: dto.username,
+                        password: dto.password ?? null,
+                        status: VpsStatus.active,
+                        expiredAt: dto.expiresAt
+                            ? new Date(dto.expiresAt)
+                            : null,
+                    },
+                })
 
-        // Run the matching provider adapter.
-        let provisioned: {
-            ipAddress?: string
-            username?: string
-            password?: string
-        } = {}
+                const updatedOrder = await transaction.order.updateMany({
+                    where: { id: order.id, status: OrderStatus.paid },
+                    data: { status: OrderStatus.active },
+                })
+                if (updatedOrder.count !== 1) {
+                    throw new ConflictException(
+                        'Order is no longer eligible for provisioning',
+                    )
+                }
 
-        if (product.provisioningType === ProvisioningType.api) {
-            const adapter = this.providers.getAdapter(product.provider)
-            const result = await adapter.createVps({
-                vpsName: order.vpsName,
-                region: product.region ?? undefined,
-                operatingSystem: order.selectedOs ?? undefined,
-                cpu: product.cpu,
-                ram: product.ram,
-                storage: product.storage,
-                providerAccount: {
-                    apiKey: providerAccount?.apiKey,
-                    apiSecret: providerAccount?.apiSecret,
-                    regionDefault: providerAccount?.regionDefault,
-                },
+                return vps
             })
-            provisioned = {
-                ipAddress: result.ipAddress,
-                username: result.username,
-                password: result.password,
+        } catch (error) {
+            if (
+                error instanceof Prisma.PrismaClientKnownRequestError &&
+                error.code === 'P2002'
+            ) {
+                throw new ConflictException(
+                    'A VPS instance already exists for this order',
+                )
             }
+            throw error
         }
-
-        return this.prisma.vpsInstance.create({
-            data: {
-                userId: order.userId,
-                orderId: order.id,
-                productId: product.id,
-                providerAccountId: product.providerAccountId,
-                vpsName: order.vpsName,
-                provider: product.provider,
-                region: product.region,
-                operatingSystem: order.selectedOs ?? null,
-                cpu: product.cpu,
-                ram: product.ram,
-                storage: product.storage,
-                bandwidth: product.bandwidth,
-                transfer: product.transfer,
-                ipAddress: provisioned.ipAddress ?? null,
-                username: provisioned.username ?? null,
-                password: provisioned.password ?? null,
-                status: VpsStatus.provisioning,
-            },
-        })
     }
 
     async update(id: number, dto: UpdateVpsInstanceDto) {
