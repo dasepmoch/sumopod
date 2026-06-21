@@ -7,6 +7,7 @@ import { ProviderAccountsModule } from './provider-accounts/provider-accounts.mo
 import { OrdersModule } from './orders/orders.module'
 import { VpsInstancesModule } from './vps-instances/vps-instances.module'
 import { ProvidersModule } from './providers/providers.module'
+import { WalletModule } from './wallet/wallet.module'
 
 @Module({
     imports: [
@@ -18,6 +19,7 @@ import { ProvidersModule } from './providers/providers.module'
         OrdersModule,
         VpsInstancesModule,
         ProvidersModule,
+        WalletModule,
     ],
 })
 export class AppModule {}
