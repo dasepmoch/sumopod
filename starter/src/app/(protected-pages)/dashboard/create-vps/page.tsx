@@ -1,257 +1,186 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import Card from '@/components/ui/Card'
+import { useCallback, useEffect, useState } from 'react'
+import Alert from '@/components/ui/Alert'
 import Button from '@/components/ui/Button'
-import Input from '@/components/ui/Input'
-import Select from '@/components/ui/Select'
+import Card from '@/components/ui/Card'
 import Spinner from '@/components/ui/Spinner'
-import toast from '@/components/ui/toast'
-import Notification from '@/components/ui/Notification'
-import { FormItem, Form } from '@/components/ui/Form'
-import { apiCreateOrder, apiGetProducts } from '@/services/VpsService'
+import Tag from '@/components/ui/Tag'
+import { apiGetProducts } from '@/services/VpsService'
 import { formatIDR } from '../../_shared/statusHelpers'
-import { useRouter } from 'next/navigation'
 import type { Product } from '@/@types/vps'
 
-type Option = { value: string; label: string }
+const getOsOptions = (osOptions?: string | null) =>
+    osOptions
+        ?.split(',')
+        .map((option) => option.trim())
+        .filter(Boolean) ?? []
 
 const CreateVpsPage = () => {
-    const router = useRouter()
     const [products, setProducts] = useState<Product[]>([])
     const [loading, setLoading] = useState(true)
-    const [submitting, setSubmitting] = useState(false)
+    const [error, setError] = useState(false)
 
-    const [vpsName, setVpsName] = useState('')
-    const [provider, setProvider] = useState<Option | null>(null)
-    const [region, setRegion] = useState<Option | null>(null)
-    const [plan, setPlan] = useState<Product | null>(null)
-    const [os, setOs] = useState<Option | null>(null)
+    const loadProducts = useCallback(async () => {
+        setLoading(true)
+        setError(false)
 
-    useEffect(() => {
-        apiGetProducts()
-            .then((data) => setProducts(data))
-            .finally(() => setLoading(false))
+        try {
+            const data = await apiGetProducts()
+            setProducts(data.filter((product) => product.isActive))
+        } catch {
+            setProducts([])
+            setError(true)
+        } finally {
+            setLoading(false)
+        }
     }, [])
 
-    const providerOptions: Option[] = useMemo(() => {
-        const set = Array.from(new Set(products.map((p) => p.provider)))
-        return set.map((p) => ({ value: p, label: p }))
-    }, [products])
-
-    const regionOptions: Option[] = useMemo(() => {
-        if (!provider) return []
-        const regions = Array.from(
-            new Set(
-                products
-                    .filter((p) => p.provider === provider.value && p.region)
-                    .map((p) => p.region as string),
-            ),
-        )
-        return regions.map((r) => ({ value: r, label: r }))
-    }, [products, provider])
-
-    const planOptions = useMemo(() => {
-        if (!provider) return []
-        return products.filter(
-            (p) =>
-                p.provider === provider.value &&
-                (!region || p.region === region.value),
-        )
-    }, [products, provider, region])
-
-    const osOptions: Option[] = useMemo(() => {
-        if (!plan?.osOptions) return []
-        return plan.osOptions
-            .split(',')
-            .map((o) => o.trim())
-            .filter(Boolean)
-            .map((o) => ({ value: o, label: o }))
-    }, [plan])
-
-    const resetDownstream = (level: 'provider' | 'region') => {
-        if (level === 'provider') {
-            setRegion(null)
-        }
-        setPlan(null)
-        setOs(null)
-    }
-
-    const canSubmit = vpsName.trim() && plan
-
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault()
-        if (!canSubmit || !plan) return
-        try {
-            setSubmitting(true)
-            await apiCreateOrder({
-                productId: plan.id,
-                vpsName: vpsName.trim(),
-                selectedOs: os?.value,
-            })
-            toast.push(
-                <Notification title="Order created" type="success">
-                    Your order is pending admin approval.
-                </Notification>,
-            )
-            router.push('/dashboard/vps')
-        } catch {
-            toast.push(
-                <Notification title="Failed" type="danger">
-                    Could not create the order. Please try again.
-                </Notification>,
-            )
-        } finally {
-            setSubmitting(false)
-        }
-    }
-
-    if (loading) {
-        return (
-            <div className="flex justify-center py-20">
-                <Spinner size={40} />
-            </div>
-        )
-    }
+    useEffect(() => {
+        loadProducts()
+    }, [loadProducts])
 
     return (
         <div>
             <div className="mb-6">
                 <h3 className="mb-1">Create VPS</h3>
                 <p className="text-gray-500">
-                    Configure and order a new VPS instance
+                    Choose an active VPS plan that fits your workload.
                 </p>
             </div>
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                <div className="lg:col-span-2">
-                    <Card>
-                        <Form onSubmit={handleSubmit}>
-                            <FormItem label="VPS Name">
-                                <Input
-                                    placeholder="my-vps-01"
-                                    value={vpsName}
-                                    onChange={(e) => setVpsName(e.target.value)}
-                                />
-                            </FormItem>
-                            <FormItem label="Provider">
-                                <Select<Option>
-                                    placeholder="Select provider"
-                                    options={providerOptions}
-                                    value={provider}
-                                    onChange={(opt) => {
-                                        setProvider(opt)
-                                        resetDownstream('provider')
-                                    }}
-                                />
-                            </FormItem>
-                            <FormItem label="Region">
-                                <Select<Option>
-                                    placeholder="Select region"
-                                    options={regionOptions}
-                                    value={region}
-                                    isDisabled={!provider}
-                                    onChange={(opt) => {
-                                        setRegion(opt)
-                                        resetDownstream('region')
-                                    }}
-                                />
-                            </FormItem>
-                            <FormItem label="Server Plan">
-                                <Select<Product>
-                                    placeholder="Select plan"
-                                    options={planOptions}
-                                    value={plan}
-                                    isDisabled={!provider}
-                                    getOptionLabel={(p) =>
-                                        `${p.name} — ${p.cpu} vCPU / ${p.ram} GB RAM / ${p.storage} GB`
-                                    }
-                                    getOptionValue={(p) => String(p.id)}
-                                    onChange={(opt) => {
-                                        setPlan(opt)
-                                        setOs(null)
-                                    }}
-                                />
-                            </FormItem>
-                            <FormItem label="Operating System">
-                                <Select<Option>
-                                    placeholder="Select OS"
-                                    options={osOptions}
-                                    value={os}
-                                    isDisabled={!plan}
-                                    onChange={(opt) => setOs(opt)}
-                                />
-                            </FormItem>
-                            <div className="flex justify-end gap-2">
-                                <Button
-                                    type="button"
-                                    onClick={() => router.push('/dashboard')}
-                                >
-                                    Cancel
-                                </Button>
-                                <Button
-                                    type="submit"
-                                    variant="solid"
-                                    loading={submitting}
-                                    disabled={!canSubmit}
-                                >
-                                    Create VPS
-                                </Button>
-                            </div>
-                        </Form>
-                    </Card>
+
+            {loading ? (
+                <div className="flex justify-center py-20">
+                    <Spinner size={40} />
                 </div>
-                <div>
-                    <Card>
-                        <h5 className="mb-4">Configuration Summary</h5>
-                        <SummaryRow label="VPS Name" value={vpsName || '-'} />
-                        <SummaryRow
-                            label="Provider"
-                            value={provider?.label || '-'}
-                        />
-                        <SummaryRow
-                            label="Region"
-                            value={region?.label || '-'}
-                        />
-                        <SummaryRow label="Plan" value={plan?.name || '-'} />
-                        <SummaryRow
-                            label="CPU"
-                            value={plan ? `${plan.cpu} vCPU` : '-'}
-                        />
-                        <SummaryRow
-                            label="RAM"
-                            value={plan ? `${plan.ram} GB` : '-'}
-                        />
-                        <SummaryRow
-                            label="Storage"
-                            value={plan ? `${plan.storage} GB` : '-'}
-                        />
-                        <SummaryRow
-                            label="Transfer"
-                            value={plan?.transfer || '-'}
-                        />
-                        <SummaryRow
-                            label="Bandwidth"
-                            value={plan?.bandwidth || '-'}
-                        />
-                        <SummaryRow label="OS" value={os?.label || '-'} />
-                        <div className="border-t border-gray-200 dark:border-gray-700 my-4" />
-                        <div className="flex items-center justify-between">
-                            <span className="font-semibold">Total / month</span>
-                            <span className="text-lg font-bold">
-                                {plan ? formatIDR(plan.priceMonthly) : '-'}
-                            </span>
+            ) : error ? (
+                <Card>
+                    <div className="mx-auto max-w-xl py-8">
+                        <Alert
+                            type="danger"
+                            title="Unable to load VPS products"
+                            showIcon
+                        >
+                            Check the backend connection and try again.
+                        </Alert>
+                        <div className="mt-4 flex justify-center">
+                            <Button onClick={loadProducts}>Try again</Button>
                         </div>
-                    </Card>
+                    </div>
+                </Card>
+            ) : products.length === 0 ? (
+                <Card>
+                    <div className="py-16 text-center">
+                        <h5 className="mb-2">No VPS products available</h5>
+                        <p className="text-gray-500">
+                            There are no active VPS plans to show right now.
+                        </p>
+                    </div>
+                </Card>
+            ) : (
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    {products.map((product) => (
+                        <ProductCard key={product.id} product={product} />
+                    ))}
                 </div>
-            </div>
+            )}
         </div>
     )
 }
 
-const SummaryRow = ({ label, value }: { label: string; value: string }) => (
-    <div className="flex items-center justify-between py-1.5">
-        <span className="text-gray-500">{label}</span>
-        <span className="font-semibold heading-text">{value}</span>
+const ProductCard = ({ product }: { product: Product }) => {
+    const osOptions = getOsOptions(product.osOptions)
+
+    return (
+        <Card
+            className="h-full"
+            bodyClass="flex h-full flex-col"
+            footer={{
+                content: (
+                    <Button
+                        block
+                        disabled
+                        variant="solid"
+                        aria-disabled="true"
+                        title="Order creation is not available yet"
+                    >
+                        Select Plan
+                    </Button>
+                ),
+            }}
+        >
+            <div className="mb-5 flex items-start justify-between gap-4">
+                <div>
+                    <h4 className="mb-2">{product.name}</h4>
+                    <div className="flex flex-wrap gap-2">
+                        <Tag className="capitalize">{product.provider}</Tag>
+                        <Tag>{product.region || 'Global'}</Tag>
+                    </div>
+                </div>
+                <div className="text-right">
+                    <div className="text-xl font-bold heading-text">
+                        {formatIDR(product.priceMonthly)}
+                    </div>
+                    <span className="text-sm text-gray-500">per month</span>
+                </div>
+            </div>
+
+            <dl className="mb-5 grid grid-cols-2 gap-x-4 gap-y-3">
+                <ProductDetail label="CPU" value={`${product.cpu} vCPU`} />
+                <ProductDetail label="RAM" value={`${product.ram} GB`} />
+                <ProductDetail
+                    label="Storage"
+                    value={`${product.storage} GB`}
+                />
+                <ProductDetail
+                    label="Bandwidth"
+                    value={product.bandwidth || '-'}
+                />
+                <ProductDetail
+                    label="Transfer"
+                    value={product.transfer || '-'}
+                />
+                <ProductDetail
+                    label="Provisioning"
+                    value={product.provisioningType}
+                    capitalize
+                />
+            </dl>
+
+            <div className="mt-auto border-t border-gray-200 pt-4 dark:border-gray-700">
+                <span className="mb-2 block text-sm text-gray-500">
+                    Operating systems
+                </span>
+                {osOptions.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                        {osOptions.map((option) => (
+                            <Tag key={option}>{option}</Tag>
+                        ))}
+                    </div>
+                ) : (
+                    <span className="font-semibold heading-text">-</span>
+                )}
+            </div>
+        </Card>
+    )
+}
+
+const ProductDetail = ({
+    label,
+    value,
+    capitalize = false,
+}: {
+    label: string
+    value: string
+    capitalize?: boolean
+}) => (
+    <div>
+        <dt className="text-sm text-gray-500">{label}</dt>
+        <dd
+            className={`font-semibold heading-text ${capitalize ? 'capitalize' : ''}`}
+        >
+            {value}
+        </dd>
     </div>
 )
 
