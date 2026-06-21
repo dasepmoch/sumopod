@@ -15,11 +15,18 @@ import { Roles } from '../auth/decorators/roles.decorator'
 import { CurrentUser } from '../auth/decorators/current-user.decorator'
 import { OrdersService } from './orders.service'
 import { CreateOrderDto } from './dto/order.dto'
+import { PurchaseOrderDto } from './dto/purchase-order.dto'
 
 @Controller('orders')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class OrdersController {
     constructor(private service: OrdersService) {}
+
+    @Post('purchase')
+    @Roles(Role.USER)
+    purchase(@CurrentUser('id') userId: number, @Body() dto: PurchaseOrderDto) {
+        return this.service.purchase(userId, dto)
+    }
 
     @Post()
     create(@CurrentUser('id') userId: number, @Body() dto: CreateOrderDto) {

@@ -4,6 +4,7 @@ import type {
     Order,
     Product,
     ProviderAccount,
+    PurchaseOrderResponse,
     VpsInstance,
     VpsStatus,
 } from '@/@types/vps'
@@ -31,6 +32,18 @@ export function apiCreateOrder(data: {
 }) {
     return ApiService.fetchDataWithAxios<Order>({
         url: '/orders',
+        method: 'post',
+        data,
+    })
+}
+
+export function apiPurchaseOrder(data: {
+    productId: number
+    hostname: string
+    os: string
+}) {
+    return ApiService.fetchDataWithAxios<PurchaseOrderResponse>({
+        url: '/orders/purchase',
         method: 'post',
         data,
     })

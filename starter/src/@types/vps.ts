@@ -4,6 +4,7 @@ export type ProvisioningType = 'manual' | 'api' | 'stock'
 
 export type OrderStatus =
     | 'pending'
+    | 'paid'
     | 'approved'
     | 'provisioning'
     | 'active'
@@ -64,6 +65,18 @@ export type Order = {
     createdAt: string
     product?: { id: number; name: string; provider?: ProviderName }
     user?: { id: number; name: string; email: string }
+}
+
+export type PurchaseOrderResponse = {
+    order: Order
+    wallet: {
+        id: number
+        userId: number
+        balance: string | number
+        currency: string
+        createdAt: string
+        updatedAt: string
+    }
 }
 
 export type VpsInstance = {

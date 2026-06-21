@@ -27,6 +27,7 @@ enum ProvisioningType {
 
 enum OrderStatus {
   pending
+  paid
   approved
   provisioning
   active
