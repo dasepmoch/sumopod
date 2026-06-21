@@ -41,6 +41,24 @@ enum VpsStatus {
   terminated
 }
 
+enum WalletTransactionType {
+  TOPUP
+  PURCHASE
+  REFUND
+  ADJUSTMENT
+}
+
+enum WalletTransactionDirection {
+  CREDIT
+  DEBIT
+}
+
+enum WalletTransactionStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
 model User {
   id        Int      @id @default(autoincrement())
   name      String
@@ -50,8 +68,10 @@ model User {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  orders       Order[]
-  vpsInstances VpsInstance[]
+  orders             Order[]
+  vpsInstances       VpsInstance[]
+  wallet             Wallet?
+  walletTransactions WalletTransaction[]
 
   @@map("users")
 }
@@ -147,4 +167,39 @@ model VpsInstance {
   providerAccount ProviderAccount? @relation(fields: [providerAccountId], references: [id])
 
   @@map("vps_instances")
+}
+
+model Wallet {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @unique @map("user_id")
+  balance   Decimal  @default(0) @db.Decimal(18, 2)
+  currency  String   @default("IDR") @db.VarChar(3)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user         User                @relation(fields: [userId], references: [id])
+  transactions WalletTransaction[]
+
+  @@map("wallets")
+}
+
+model WalletTransaction {
+  id            Int                        @id @default(autoincrement())
+  userId        Int                        @map("user_id")
+  walletId      Int                        @map("wallet_id")
+  type          WalletTransactionType
+  direction     WalletTransactionDirection
+  amount        Decimal                    @db.Decimal(18, 2)
+  status        WalletTransactionStatus
+  referenceType String?                    @map("reference_type")
+  referenceId   String?                    @map("reference_id")
+  description   String?                    @db.VarChar(500)
+  createdAt     DateTime                   @default(now()) @map("created_at")
+
+  user   User   @relation(fields: [userId], references: [id])
+  wallet Wallet @relation(fields: [walletId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([walletId])
+  @@map("wallet_transactions")
 }

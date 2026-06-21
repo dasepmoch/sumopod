@@ -29,6 +29,19 @@ async function main() {
         },
     })
 
+    // ---- Wallets ----
+    await prisma.wallet.upsert({
+        where: { userId: admin.id },
+        update: {},
+        create: { userId: admin.id },
+    })
+
+    await prisma.wallet.upsert({
+        where: { userId: user.id },
+        update: {},
+        create: { userId: user.id },
+    })
+
     // ---- Provider account ----
     let tencentAccount = await prisma.providerAccount.findFirst({
         where: { name: 'Tencent Account 1' },
