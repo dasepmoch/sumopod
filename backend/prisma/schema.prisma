@@ -1,0 +1,150 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum Provider {
+  tencent
+  alibaba
+  cloudeka
+  manual
+}
+
+enum ProvisioningType {
+  manual
+  api
+  stock
+}
+
+enum OrderStatus {
+  pending
+  approved
+  provisioning
+  active
+  cancelled
+}
+
+enum VpsStatus {
+  provisioning
+  active
+  suspended
+  expired
+  terminated
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  name      String
+  email     String   @unique
+  password  String
+  role      Role     @default(USER)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  orders       Order[]
+  vpsInstances VpsInstance[]
+
+  @@map("users")
+}
+
+model ProviderAccount {
+  id            Int      @id @default(autoincrement())
+  name          String
+  provider      Provider
+  apiKey        String?  @map("api_key")
+  apiSecret     String?  @map("api_secret")
+  regionDefault String?  @map("region_default")
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  products     Product[]
+  vpsInstances VpsInstance[]
+
+  @@map("provider_accounts")
+}
+
+model Product {
+  id                Int              @id @default(autoincrement())
+  name              String
+  providerAccountId Int              @map("provider_account_id")
+  provider          Provider
+  region            String?
+  cpu               Int
+  ram               Int
+  storage           Int
+  bandwidth         String?
+  transfer          String?
+  priceMonthly      Decimal          @map("price_monthly") @db.Decimal(12, 2)
+  costMonthly       Decimal          @default(0) @map("cost_monthly") @db.Decimal(12, 2)
+  osOptions         String?          @map("os_options")
+  provisioningType  ProvisioningType @default(manual) @map("provisioning_type")
+  isActive          Boolean          @default(true) @map("is_active")
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+
+  providerAccount ProviderAccount @relation(fields: [providerAccountId], references: [id])
+  orders          Order[]
+  vpsInstances    VpsInstance[]
+
+  @@map("products")
+}
+
+model Order {
+  id           Int         @id @default(autoincrement())
+  userId       Int         @map("user_id")
+  productId    Int         @map("product_id")
+  vpsName      String      @map("vps_name")
+  selectedOs   String?     @map("selected_os")
+  status       OrderStatus @default(pending)
+  totalPrice   Decimal     @map("total_price") @db.Decimal(12, 2)
+  billingCycle String      @default("monthly") @map("billing_cycle")
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+
+  user         User          @relation(fields: [userId], references: [id])
+  product      Product       @relation(fields: [productId], references: [id])
+  vpsInstances VpsInstance[]
+
+  @@map("orders")
+}
+
+model VpsInstance {
+  id                Int       @id @default(autoincrement())
+  userId            Int       @map("user_id")
+  orderId           Int?      @map("order_id")
+  productId         Int       @map("product_id")
+  providerAccountId Int?      @map("provider_account_id")
+  vpsName           String    @map("vps_name")
+  provider          Provider
+  region            String?
+  operatingSystem   String?   @map("operating_system")
+  cpu               Int
+  ram               Int
+  storage           Int
+  bandwidth         String?
+  transfer          String?
+  ipAddress         String?   @map("ip_address")
+  username          String?
+  password          String?
+  status            VpsStatus @default(provisioning)
+  expiredAt         DateTime? @map("expired_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  user            User             @relation(fields: [userId], references: [id])
+  order           Order?           @relation(fields: [orderId], references: [id])
+  product         Product          @relation(fields: [productId], references: [id])
+  providerAccount ProviderAccount? @relation(fields: [providerAccountId], references: [id])
+
+  @@map("vps_instances")
+}

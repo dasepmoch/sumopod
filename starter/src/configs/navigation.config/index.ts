@@ -1,0 +1,102 @@
+import {
+    NAV_ITEM_TYPE_TITLE,
+    NAV_ITEM_TYPE_ITEM,
+} from '@/constants/navigation.constant'
+
+import type { NavigationTree } from '@/@types/navigation'
+
+const navigationConfig: NavigationTree[] = [
+    {
+        key: 'dashboard',
+        path: '/dashboard',
+        title: 'Dashboard',
+        translateKey: 'nav.dashboard',
+        icon: 'home',
+        type: NAV_ITEM_TYPE_ITEM,
+        authority: [],
+        subMenu: [],
+    },
+    {
+        key: 'dashboard.createVps',
+        path: '/dashboard/create-vps',
+        title: 'Create VPS',
+        translateKey: 'nav.createVps',
+        icon: 'singleMenu',
+        type: NAV_ITEM_TYPE_ITEM,
+        authority: [],
+        subMenu: [],
+    },
+    {
+        key: 'dashboard.vps',
+        path: '/dashboard/vps',
+        title: 'My VPS',
+        translateKey: 'nav.myVps',
+        icon: 'groupSingleMenu',
+        type: NAV_ITEM_TYPE_ITEM,
+        authority: [],
+        subMenu: [],
+    },
+    {
+        key: 'admin',
+        path: '',
+        title: 'Admin',
+        translateKey: 'nav.admin',
+        icon: 'groupMenu',
+        type: NAV_ITEM_TYPE_TITLE,
+        authority: ['ADMIN'],
+        subMenu: [
+            {
+                key: 'admin.overview',
+                path: '/admin',
+                title: 'Overview',
+                translateKey: 'nav.adminOverview',
+                icon: '',
+                type: NAV_ITEM_TYPE_ITEM,
+                authority: ['ADMIN'],
+                subMenu: [],
+            },
+            {
+                key: 'admin.products',
+                path: '/admin/products',
+                title: 'Products',
+                translateKey: 'nav.adminProducts',
+                icon: '',
+                type: NAV_ITEM_TYPE_ITEM,
+                authority: ['ADMIN'],
+                subMenu: [],
+            },
+            {
+                key: 'admin.providerAccounts',
+                path: '/admin/provider-accounts',
+                title: 'Provider Accounts',
+                translateKey: 'nav.adminProviderAccounts',
+                icon: '',
+                type: NAV_ITEM_TYPE_ITEM,
+                authority: ['ADMIN'],
+                subMenu: [],
+            },
+            {
+                key: 'admin.orders',
+                path: '/admin/orders',
+                title: 'Orders',
+                translateKey: 'nav.adminOrders',
+                icon: '',
+                type: NAV_ITEM_TYPE_ITEM,
+                authority: ['ADMIN'],
+                subMenu: [],
+            },
+            {
+                key: 'admin.vps',
+                path: '/admin/vps',
+                title: 'VPS Instances',
+                translateKey: 'nav.adminVps',
+                icon: '',
+                type: NAV_ITEM_TYPE_ITEM,
+                authority: ['ADMIN'],
+                subMenu: [],
+            },
+        ],
+    },
+]
+
+export default navigationConfig
