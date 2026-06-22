@@ -22,6 +22,11 @@ export const protectedRoutes: Routes = {
         authority: [],
         meta: pageMeta,
     },
+    '/dashboard/wallet': {
+        key: 'dashboard.wallet',
+        authority: [],
+        meta: pageMeta,
+    },
     '/admin': {
         key: 'admin',
         authority: ['ADMIN'],
@@ -44,6 +49,16 @@ export const protectedRoutes: Routes = {
     },
     '/admin/vps': {
         key: 'admin.vps',
+        authority: ['ADMIN'],
+        meta: pageMeta,
+    },
+    '/admin/wallets': {
+        key: 'admin.wallets',
+        authority: ['ADMIN'],
+        meta: pageMeta,
+    },
+    '/admin/wallet-transactions': {
+        key: 'admin.walletTransactions',
         authority: ['ADMIN'],
         meta: pageMeta,
     },

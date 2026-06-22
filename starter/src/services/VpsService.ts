@@ -3,7 +3,9 @@ import type {
     AdminProduct,
     Order,
     Product,
+    ProvisionVpsFromOrderInput,
     ProviderAccount,
+    PurchaseOrderResponse,
     VpsInstance,
     VpsStatus,
 } from '@/@types/vps'
@@ -31,6 +33,18 @@ export function apiCreateOrder(data: {
 }) {
     return ApiService.fetchDataWithAxios<Order>({
         url: '/orders',
+        method: 'post',
+        data,
+    })
+}
+
+export function apiPurchaseOrder(data: {
+    productId: number
+    hostname: string
+    os: string
+}) {
+    return ApiService.fetchDataWithAxios<PurchaseOrderResponse>({
+        url: '/orders/purchase',
         method: 'post',
         data,
     })
@@ -156,10 +170,14 @@ export function apiAdminGetVps() {
     })
 }
 
-export function apiAdminCreateVpsFromOrder(orderId: number) {
+export function apiAdminCreateVpsFromOrder(
+    orderId: number,
+    data: ProvisionVpsFromOrderInput,
+) {
     return ApiService.fetchDataWithAxios<VpsInstance>({
         url: `/admin/vps/from-order/${orderId}`,
         method: 'post',
+        data,
     })
 }
 

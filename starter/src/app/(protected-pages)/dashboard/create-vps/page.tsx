@@ -1,7 +1,6 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { isAxiosError } from 'axios'
 import Alert from '@/components/ui/Alert'
 import Button from '@/components/ui/Button'
 import Card from '@/components/ui/Card'
@@ -10,15 +9,14 @@ import Input from '@/components/ui/Input'
 import Select from '@/components/ui/Select'
 import Spinner from '@/components/ui/Spinner'
 import Tag from '@/components/ui/Tag'
-import { apiCreateOrder, apiGetProducts } from '@/services/VpsService'
+import { apiGetMyWallet } from '@/services/WalletService'
+import { apiGetProducts, apiPurchaseOrder } from '@/services/VpsService'
 import { formatIDR } from '../../_shared/statusHelpers'
-import type { FormEvent } from 'react'
-import type { Order, Product } from '@/@types/vps'
+import type { Product } from '@/@types/vps'
+import type { Wallet } from '@/@types/wallet'
 
-type OsOption = {
-    value: string
-    label: string
-}
+const HOSTNAME_PATTERN =
+    /^(?=.{1,253}$)(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/
 
 const getOsOptions = (osOptions?: string | null) =>
     osOptions
@@ -26,144 +24,167 @@ const getOsOptions = (osOptions?: string | null) =>
         .map((option) => option.trim())
         .filter(Boolean) ?? []
 
-const validateHostname = (hostname: string) => {
-    if (!hostname) {
-        return 'Hostname is required.'
-    }
+const toMinorUnits = (value: string | number) => {
+    const normalized = String(value).trim()
+    const match = normalized.match(/^(\d+)(?:\.(\d{1,2}))?$/)
+    if (!match) return null
 
-    if (hostname.length < 3 || hostname.length > 63) {
-        return 'Hostname must be between 3 and 63 characters.'
-    }
-
-    if (!/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])$/.test(hostname)) {
-        return 'Use lowercase letters, numbers, and hyphens. Do not start or end with a hyphen.'
-    }
-
-    return ''
+    const fraction = (match[2] ?? '').padEnd(2, '0')
+    return `${match[1]}${fraction}`.replace(/^0+(?=\d)/, '')
 }
 
-const getRequestError = (error: unknown) => {
-    if (isAxiosError(error)) {
-        const message = error.response?.data?.message
+const isLessThan = (left: string, right: string) =>
+    left.length !== right.length ? left.length < right.length : left < right
 
-        if (Array.isArray(message)) {
-            return message.join(' ')
+const getErrorMessage = (error: unknown) => {
+    const message = (
+        error as {
+            response?: {
+                data?: {
+                    message?: string | string[]
+                }
+            }
         }
+    ).response?.data?.message
 
-        if (typeof message === 'string') {
-            return message
-        }
-    }
-
-    return 'Unable to create the order. Please try again.'
+    if (Array.isArray(message)) return message.join(', ')
+    return message || 'Unable to complete the purchase.'
 }
 
 const CreateVpsPage = () => {
     const [products, setProducts] = useState<Product[]>([])
-    const [productsLoading, setProductsLoading] = useState(true)
-    const [productsError, setProductsError] = useState(false)
+    const [wallet, setWallet] = useState<Wallet | null>(null)
+    const [loading, setLoading] = useState(true)
+    const [productError, setProductError] = useState(false)
+    const [walletError, setWalletError] = useState(false)
     const [selectedProductId, setSelectedProductId] = useState<number | null>(
         null,
     )
     const [hostname, setHostname] = useState('')
-    const [hostnameTouched, setHostnameTouched] = useState(false)
     const [selectedOs, setSelectedOs] = useState('')
-    const [submitting, setSubmitting] = useState(false)
-    const [submitError, setSubmitError] = useState('')
-    const [createdOrder, setCreatedOrder] = useState<Order | null>(null)
+    const [purchasing, setPurchasing] = useState(false)
+    const [purchaseError, setPurchaseError] = useState('')
+    const [purchaseSucceeded, setPurchaseSucceeded] = useState(false)
 
-    const selectedProduct =
-        products.find((product) => product.id === selectedProductId) ?? null
-    const osOptions = useMemo<OsOption[]>(
-        () =>
-            getOsOptions(selectedProduct?.osOptions).map((option) => ({
-                value: option,
-                label: option,
-            })),
-        [selectedProduct?.osOptions],
-    )
-    const hostnameError = validateHostname(hostname)
-    const canSubmit = Boolean(
-        selectedProduct &&
-            selectedOs &&
-            !hostnameError &&
-            !submitting &&
-            osOptions.length > 0,
-    )
+    const loadPage = useCallback(async () => {
+        setLoading(true)
+        setProductError(false)
+        setWalletError(false)
 
-    const loadProducts = useCallback(async () => {
-        setProductsLoading(true)
-        setProductsError(false)
+        const [productsResult, walletResult] = await Promise.allSettled([
+            apiGetProducts(),
+            apiGetMyWallet(),
+        ])
 
-        try {
-            const data = await apiGetProducts()
-            setProducts(data.filter((product) => product.isActive))
-        } catch {
+        if (productsResult.status === 'fulfilled') {
+            setProducts(
+                productsResult.value.filter((product) => product.isActive),
+            )
+        } else {
             setProducts([])
-            setProductsError(true)
-        } finally {
-            setProductsLoading(false)
+            setProductError(true)
         }
+
+        if (walletResult.status === 'fulfilled') {
+            setWallet(walletResult.value)
+        } else {
+            setWallet(null)
+            setWalletError(true)
+        }
+
+        setLoading(false)
     }, [])
 
     useEffect(() => {
-        loadProducts()
-    }, [loadProducts])
+        loadPage()
+    }, [loadPage])
 
-    const clearFeedback = () => {
-        setSubmitError('')
-        setCreatedOrder(null)
-    }
+    const selectedProduct = useMemo(
+        () =>
+            products.find((product) => product.id === selectedProductId) ??
+            null,
+        [products, selectedProductId],
+    )
+    const osOptions = useMemo(
+        () => getOsOptions(selectedProduct?.osOptions),
+        [selectedProduct],
+    )
+    const hostnameValid = HOSTNAME_PATTERN.test(hostname)
+    const walletAmount = wallet ? toMinorUnits(wallet.balance) : null
+    const productAmount = selectedProduct
+        ? toMinorUnits(selectedProduct.priceMonthly)
+        : null
+    const insufficientBalance =
+        walletAmount !== null &&
+        productAmount !== null &&
+        isLessThan(walletAmount, productAmount)
+    const canPurchase =
+        Boolean(selectedProduct) &&
+        hostnameValid &&
+        Boolean(selectedOs) &&
+        !insufficientBalance &&
+        !purchasing
 
-    const handleSelectProduct = (product: Product) => {
+    const selectProduct = (product: Product) => {
         setSelectedProductId(product.id)
         setSelectedOs('')
-        clearFeedback()
+        setPurchaseError('')
+        setPurchaseSucceeded(false)
     }
 
-    const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-        event.preventDefault()
-        setHostnameTouched(true)
+    const purchase = async () => {
+        if (!selectedProduct || !canPurchase) return
 
-        if (!canSubmit || !selectedProduct) {
-            return
-        }
-
-        setSubmitting(true)
-        setSubmitError('')
-        setCreatedOrder(null)
+        setPurchasing(true)
+        setPurchaseError('')
+        setPurchaseSucceeded(false)
 
         try {
-            const order = await apiCreateOrder({
+            const result = await apiPurchaseOrder({
                 productId: selectedProduct.id,
-                vpsName: hostname,
-                selectedOs,
+                hostname,
+                os: selectedOs,
             })
-            setCreatedOrder(order)
-            setHostname('')
-            setHostnameTouched(false)
-            setSelectedOs('')
+            setWallet(result.wallet)
+            setPurchaseSucceeded(true)
         } catch (error) {
-            setSubmitError(getRequestError(error))
+            setPurchaseError(getErrorMessage(error))
         } finally {
-            setSubmitting(false)
+            setPurchasing(false)
         }
     }
 
     return (
         <div>
-            <div className="mb-6">
-                <h3 className="mb-1">Create VPS</h3>
-                <p className="text-gray-500">
-                    Choose a plan and submit it for manual provisioning.
-                </p>
+            <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+                <div>
+                    <h3 className="mb-1">Create VPS</h3>
+                    <p className="text-gray-500">
+                        Choose a VPS plan and pay directly from your wallet.
+                    </p>
+                </div>
+                <Card className="sm:min-w-64">
+                    <span className="text-sm text-gray-500">
+                        Wallet balance
+                    </span>
+                    <h4 className="mt-1">
+                        {wallet ? formatIDR(wallet.balance) : 'Unavailable'}
+                    </h4>
+                </Card>
             </div>
 
-            {productsLoading ? (
+            {walletError && (
+                <Alert className="mb-4" type="warning" showIcon>
+                    Wallet balance could not be loaded. The backend will still
+                    validate your balance before purchase.
+                </Alert>
+            )}
+
+            {loading ? (
                 <div className="flex justify-center py-20">
                     <Spinner size={40} />
                 </div>
-            ) : productsError ? (
+            ) : productError ? (
                 <Card>
                     <div className="mx-auto max-w-xl py-8">
                         <Alert
@@ -174,7 +195,7 @@ const CreateVpsPage = () => {
                             Check the backend connection and try again.
                         </Alert>
                         <div className="mt-4 flex justify-center">
-                            <Button onClick={loadProducts}>Try again</Button>
+                            <Button onClick={loadPage}>Try again</Button>
                         </div>
                     </div>
                 </Card>
@@ -188,144 +209,154 @@ const CreateVpsPage = () => {
                     </div>
                 </Card>
             ) : (
-                <div>
+                <>
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                         {products.map((product) => (
                             <ProductCard
                                 key={product.id}
                                 product={product}
                                 selected={product.id === selectedProductId}
-                                onSelect={() => handleSelectProduct(product)}
+                                onSelect={() => selectProduct(product)}
                             />
                         ))}
                     </div>
 
-                    <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-3">
-                        <Card
-                            className="xl:col-span-2"
-                            header={{ content: 'Order configuration' }}
-                        >
-                            {createdOrder && (
-                                <Alert
-                                    className="mb-5"
-                                    type="success"
-                                    title={`Order #${createdOrder.id} created`}
-                                    showIcon
-                                >
-                                    Order created. Admin will review and
-                                    provision your VPS manually.
-                                </Alert>
-                            )}
-
-                            {submitError && (
-                                <Alert
-                                    className="mb-5"
-                                    type="danger"
-                                    title="Unable to create order"
-                                    showIcon
-                                >
-                                    {submitError}
-                                </Alert>
-                            )}
-
-                            <form onSubmit={handleSubmit}>
+                    <Card className="mt-6">
+                        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                            <div>
+                                <h4 className="mb-4">VPS configuration</h4>
                                 <FormItem
-                                    asterisk
-                                    htmlFor="hostname"
                                     label="Hostname"
-                                    extra={
-                                        <span className="ml-2 text-xs font-normal text-gray-500">
-                                            3-63 lowercase letters, numbers, or
-                                            hyphens
-                                        </span>
-                                    }
+                                    asterisk
                                     invalid={
-                                        hostnameTouched &&
-                                        Boolean(hostnameError)
+                                        hostname.length > 0 && !hostnameValid
                                     }
-                                    errorMessage={hostnameError}
+                                    errorMessage="Use valid dot-separated labels with letters, numbers, and internal hyphens."
                                 >
                                     <Input
-                                        id="hostname"
-                                        autoComplete="off"
-                                        placeholder="example-vps"
                                         value={hostname}
-                                        disabled={submitting}
-                                        onBlur={() => setHostnameTouched(true)}
+                                        placeholder="my-server"
+                                        maxLength={253}
                                         onChange={(event) => {
-                                            setHostname(
-                                                event.target.value.trim(),
-                                            )
-                                            clearFeedback()
+                                            setHostname(event.target.value)
+                                            setPurchaseError('')
+                                            setPurchaseSucceeded(false)
                                         }}
                                     />
                                 </FormItem>
-
-                                <FormItem
-                                    asterisk
-                                    label="Operating System"
-                                    extra={
-                                        <span className="ml-2 text-xs font-normal text-gray-500">
-                                            Options are provided by the selected
-                                            plan
-                                        </span>
-                                    }
-                                >
-                                    <Select<OsOption>
-                                        inputId="operating-system"
+                                <FormItem label="Operating system" asterisk>
+                                    <Select<{
+                                        value: string
+                                        label: string
+                                    }>
+                                        isDisabled={!selectedProduct}
                                         placeholder={
                                             selectedProduct
-                                                ? 'Select an operating system'
+                                                ? 'Select operating system'
                                                 : 'Select a plan first'
                                         }
-                                        options={osOptions}
+                                        options={osOptions.map((option) => ({
+                                            value: option,
+                                            label: option,
+                                        }))}
                                         value={
-                                            osOptions.find(
-                                                (option) =>
-                                                    option.value === selectedOs,
-                                            ) ?? null
-                                        }
-                                        isDisabled={
-                                            !selectedProduct ||
-                                            osOptions.length === 0 ||
-                                            submitting
+                                            selectedOs
+                                                ? {
+                                                      value: selectedOs,
+                                                      label: selectedOs,
+                                                  }
+                                                : null
                                         }
                                         onChange={(option) => {
                                             setSelectedOs(option?.value ?? '')
-                                            clearFeedback()
+                                            setPurchaseError('')
+                                            setPurchaseSucceeded(false)
                                         }}
                                     />
-                                    {selectedProduct &&
-                                        osOptions.length === 0 && (
-                                            <p className="mt-2 text-sm text-error">
-                                                This plan has no operating
-                                                systems available.
-                                            </p>
-                                        )}
                                 </FormItem>
+                            </div>
 
-                                <Alert className="mb-5" type="info" showIcon>
-                                    Orders are reviewed and provisioned
-                                    manually. Creating an order does not
-                                    activate a VPS.
-                                </Alert>
+                            <div>
+                                <h4 className="mb-4">Order summary</h4>
+                                {selectedProduct ? (
+                                    <dl className="mb-5 space-y-3">
+                                        <SummaryRow
+                                            label="Plan"
+                                            value={selectedProduct.name}
+                                        />
+                                        <SummaryRow
+                                            label="Hostname"
+                                            value={hostname || '-'}
+                                        />
+                                        <SummaryRow
+                                            label="Operating system"
+                                            value={selectedOs || '-'}
+                                        />
+                                        <SummaryRow
+                                            label="Monthly price"
+                                            value={formatIDR(
+                                                selectedProduct.priceMonthly,
+                                            )}
+                                        />
+                                        <SummaryRow
+                                            label="Wallet balance"
+                                            value={
+                                                wallet
+                                                    ? formatIDR(wallet.balance)
+                                                    : 'Unavailable'
+                                            }
+                                        />
+                                    </dl>
+                                ) : (
+                                    <p className="mb-5 text-gray-500">
+                                        Select a VPS plan to continue.
+                                    </p>
+                                )}
+
+                                {insufficientBalance && (
+                                    <Alert
+                                        className="mb-4"
+                                        type="warning"
+                                        showIcon
+                                    >
+                                        Insufficient wallet balance for this
+                                        plan.
+                                    </Alert>
+                                )}
+                                {purchaseError && (
+                                    <Alert
+                                        className="mb-4"
+                                        type="danger"
+                                        showIcon
+                                    >
+                                        {purchaseError}
+                                    </Alert>
+                                )}
+                                {purchaseSucceeded && (
+                                    <Alert
+                                        className="mb-4"
+                                        type="success"
+                                        showIcon
+                                    >
+                                        Purchase successful. Your VPS is paid
+                                        and waiting for provisioning.
+                                    </Alert>
+                                )}
 
                                 <Button
                                     block
-                                    type="submit"
                                     variant="solid"
-                                    loading={submitting}
-                                    disabled={!canSubmit}
-                                    aria-disabled={!canSubmit}
+                                    disabled={!canPurchase}
+                                    aria-disabled={!canPurchase}
+                                    loading={purchasing}
+                                    onClick={purchase}
                                 >
-                                    Create Order
+                                    Purchase with wallet balance
                                 </Button>
-                            </form>
-                        </Card>
-
-                        <SelectedPlanSummary product={selectedProduct} />
-                    </div>
-                </div>
+                            </div>
+                        </div>
+                    </Card>
+                </>
             )}
         </div>
     )
@@ -344,17 +375,18 @@ const ProductCard = ({
 
     return (
         <Card
-            className={`flex h-full flex-col ${selected ? 'ring-2 ring-primary' : ''}`}
-            bodyClass="flex flex-1 flex-col"
+            className={`h-full ${selected ? 'ring-2 ring-primary' : ''}`}
+            bodyClass="flex h-full flex-col"
             footer={{
                 content: (
                     <Button
                         block
-                        variant="solid"
                         active={selected}
+                        variant={selected ? 'solid' : 'default'}
+                        aria-pressed={selected}
                         onClick={onSelect}
                     >
-                        {selected ? 'Selected Plan' : 'Select Plan'}
+                        {selected ? 'Selected' : 'Select Plan'}
                     </Button>
                 ),
             }}
@@ -415,45 +447,6 @@ const ProductCard = ({
     )
 }
 
-const SelectedPlanSummary = ({ product }: { product: Product | null }) => (
-    <Card header={{ content: 'Selected plan' }}>
-        {product ? (
-            <div>
-                <div className="mb-5">
-                    <h4 className="mb-2">{product.name}</h4>
-                    <div className="flex flex-wrap gap-2">
-                        <Tag className="capitalize">{product.provider}</Tag>
-                        <Tag>{product.region || 'Global'}</Tag>
-                    </div>
-                </div>
-
-                <dl className="space-y-3">
-                    <SummaryDetail
-                        label="Monthly price"
-                        value={formatIDR(product.priceMonthly)}
-                    />
-                    <SummaryDetail
-                        label="Resources"
-                        value={`${product.cpu} vCPU, ${product.ram} GB RAM, ${product.storage} GB storage`}
-                    />
-                    <SummaryDetail
-                        label="Provisioning"
-                        value={`${product.provisioningType} (admin review required)`}
-                        capitalize
-                    />
-                </dl>
-            </div>
-        ) : (
-            <div className="py-8 text-center">
-                <h5 className="mb-2">No plan selected</h5>
-                <p className="text-gray-500">
-                    Select one of the available VPS plans to continue.
-                </p>
-            </div>
-        )}
-    </Card>
-)
-
 const ProductDetail = ({
     label,
     value,
@@ -473,22 +466,10 @@ const ProductDetail = ({
     </div>
 )
 
-const SummaryDetail = ({
-    label,
-    value,
-    capitalize = false,
-}: {
-    label: string
-    value: string
-    capitalize?: boolean
-}) => (
-    <div className="flex items-start justify-between gap-4 border-b border-gray-200 pb-3 last:border-0 last:pb-0 dark:border-gray-700">
-        <dt className="text-sm text-gray-500">{label}</dt>
-        <dd
-            className={`text-right font-semibold heading-text ${capitalize ? 'capitalize' : ''}`}
-        >
-            {value}
-        </dd>
+const SummaryRow = ({ label, value }: { label: string; value: string }) => (
+    <div className="flex items-start justify-between gap-4">
+        <dt className="text-gray-500">{label}</dt>
+        <dd className="text-right font-semibold heading-text">{value}</dd>
     </div>
 )
 

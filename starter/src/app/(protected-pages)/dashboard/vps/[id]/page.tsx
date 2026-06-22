@@ -1,9 +1,12 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import Card from '@/components/ui/Card'
+import { useCallback, useEffect, useState } from 'react'
+import Alert from '@/components/ui/Alert'
 import Button from '@/components/ui/Button'
+import Card from '@/components/ui/Card'
+import Notification from '@/components/ui/Notification'
 import Spinner from '@/components/ui/Spinner'
+import toast from '@/components/ui/toast'
 import { apiGetVps } from '@/services/VpsService'
 import { VpsStatusTag } from '../../../_shared/StatusTag'
 import { formatDate } from '../../../_shared/statusHelpers'
@@ -17,10 +20,10 @@ const DetailRow = ({
     label: string
     value?: React.ReactNode
 }) => (
-    <div className="flex items-center justify-between py-2.5 border-b border-gray-100 dark:border-gray-700 last:border-0">
+    <div className="flex items-center justify-between border-b border-gray-100 py-2.5 last:border-0 dark:border-gray-700">
         <span className="text-gray-500">{label}</span>
         <span className="font-semibold heading-text text-right">
-            {value || '-'}
+            {value ?? '-'}
         </span>
     </div>
 )
@@ -31,15 +34,48 @@ const VpsDetailPage = () => {
     const id = params?.id as string
     const [vps, setVps] = useState<VpsInstance | null>(null)
     const [loading, setLoading] = useState(true)
-    const [notFound, setNotFound] = useState(false)
+    const [error, setError] = useState(false)
+    const [credentialVisible, setCredentialVisible] = useState(false)
+
+    const loadVps = useCallback(async () => {
+        if (!id) return
+
+        setLoading(true)
+        setError(false)
+        setCredentialVisible(false)
+
+        try {
+            setVps(await apiGetVps(id))
+        } catch {
+            setVps(null)
+            setError(true)
+        } finally {
+            setLoading(false)
+        }
+    }, [id])
 
     useEffect(() => {
-        if (!id) return
-        apiGetVps(id)
-            .then((data) => setVps(data))
-            .catch(() => setNotFound(true))
-            .finally(() => setLoading(false))
-    }, [id])
+        loadVps()
+    }, [loadVps])
+
+    const copyCredential = async () => {
+        if (!vps?.password) return
+
+        try {
+            await navigator.clipboard.writeText(vps.password)
+            toast.push(
+                <Notification title="Credential copied" type="success">
+                    The VPS credential was copied to your clipboard.
+                </Notification>,
+            )
+        } catch {
+            toast.push(
+                <Notification title="Copy failed" type="danger">
+                    Copy the credential manually after revealing it.
+                </Notification>,
+            )
+        }
+    }
 
     if (loading) {
         return (
@@ -49,14 +85,22 @@ const VpsDetailPage = () => {
         )
     }
 
-    if (notFound || !vps) {
+    if (error || !vps) {
         return (
             <Card>
-                <div className="text-center py-16">
-                    <p className="text-gray-500 mb-4">VPS not found.</p>
-                    <Button onClick={() => router.push('/dashboard/vps')}>
-                        Back to My VPS
-                    </Button>
+                <div className="mx-auto max-w-xl py-12">
+                    <Alert type="danger" title="VPS unavailable" showIcon>
+                        This VPS is unavailable or you do not have access.
+                    </Alert>
+                    <div className="mt-4 flex justify-center gap-2">
+                        <Button onClick={loadVps}>Try again</Button>
+                        <Button
+                            variant="solid"
+                            onClick={() => router.push('/dashboard/vps')}
+                        >
+                            Back to My VPS
+                        </Button>
+                    </div>
                 </div>
             </Card>
         )
@@ -78,23 +122,63 @@ const VpsDetailPage = () => {
                     <h5 className="mb-4">Connection</h5>
                     <DetailRow label="IP Address" value={vps.ipAddress} />
                     <DetailRow label="Username" value={vps.username} />
-                    <DetailRow label="Password" value={vps.password} />
                     <DetailRow
                         label="Operating System"
                         value={vps.operatingSystem}
                     />
+                    <div className="border-b border-gray-100 py-3 last:border-0 dark:border-gray-700">
+                        <div className="mb-2 flex items-center justify-between gap-4">
+                            <span className="text-gray-500">Credential</span>
+                            <span className="font-mono font-semibold heading-text break-all text-right">
+                                {vps.password
+                                    ? credentialVisible
+                                        ? vps.password
+                                        : '••••••••••••'
+                                    : 'Credential not available'}
+                            </span>
+                        </div>
+                        {vps.password && (
+                            <div className="flex justify-end gap-2">
+                                <Button
+                                    size="xs"
+                                    onClick={() =>
+                                        setCredentialVisible(
+                                            (visible) => !visible,
+                                        )
+                                    }
+                                >
+                                    {credentialVisible ? 'Hide' : 'Reveal'}
+                                </Button>
+                                <Button size="xs" onClick={copyCredential}>
+                                    Copy
+                                </Button>
+                            </div>
+                        )}
+                        <p className="mt-2 text-right text-xs text-amber-600 dark:text-amber-300">
+                            Keep this credential private.
+                        </p>
+                    </div>
                 </Card>
                 <Card>
-                    <h5 className="mb-4">Specification</h5>
+                    <h5 className="mb-4">Service details</h5>
+                    <DetailRow label="Plan" value={vps.product?.name || '-'} />
                     <DetailRow label="Provider" value={vps.provider} />
                     <DetailRow label="Region" value={vps.region} />
+                    <DetailRow
+                        label="Order"
+                        value={vps.orderId ? `#${vps.orderId}` : '-'}
+                    />
                     <DetailRow label="CPU" value={`${vps.cpu} vCPU`} />
                     <DetailRow label="RAM" value={`${vps.ram} GB`} />
                     <DetailRow label="Storage" value={`${vps.storage} GB`} />
                     <DetailRow label="Bandwidth" value={vps.bandwidth} />
                     <DetailRow label="Transfer" value={vps.transfer} />
                     <DetailRow
-                        label="Expired At"
+                        label="Created At"
+                        value={formatDate(vps.createdAt)}
+                    />
+                    <DetailRow
+                        label="Expires At"
                         value={formatDate(vps.expiredAt)}
                     />
                 </Card>

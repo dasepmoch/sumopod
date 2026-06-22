@@ -4,6 +4,7 @@ export type ProvisioningType = 'manual' | 'api' | 'stock'
 
 export type OrderStatus =
     | 'pending'
+    | 'paid'
     | 'approved'
     | 'provisioning'
     | 'active'
@@ -66,6 +67,27 @@ export type Order = {
     user?: { id: number; name: string; email: string }
 }
 
+export type PurchaseOrderResponse = {
+    order: Order
+    wallet: {
+        id: number
+        userId: number
+        balance: string | number
+        currency: string
+        createdAt: string
+        updatedAt: string
+    }
+}
+
+export type ProvisionVpsFromOrderInput = {
+    hostname: string
+    ipAddress: string
+    os: string
+    username: string
+    password?: string
+    expiresAt?: string
+}
+
 export type VpsInstance = {
     id: number
     userId: number
@@ -87,5 +109,7 @@ export type VpsInstance = {
     status: VpsStatus
     expiredAt?: string | null
     createdAt: string
+    updatedAt?: string
+    product?: { id: number; name: string }
     user?: { id: number; name: string; email: string }
 }
