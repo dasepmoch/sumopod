@@ -105,6 +105,16 @@ const navigationConfig: NavigationTree[] = [
                 authority: ['ADMIN'],
                 subMenu: [],
             },
+            {
+                key: 'admin.walletTransactions',
+                path: '/admin/wallet-transactions',
+                title: 'Wallet Transactions',
+                translateKey: 'nav.adminWalletTransactions',
+                icon: '',
+                type: NAV_ITEM_TYPE_ITEM,
+                authority: ['ADMIN'],
+                subMenu: [],
+            },
         ],
     },
 ]

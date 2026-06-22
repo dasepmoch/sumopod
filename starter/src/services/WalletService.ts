@@ -1,8 +1,10 @@
 import ApiService from './ApiService'
 import type {
     AdminWalletCreditResponse,
+    AdminWalletTransaction,
     AdminWalletUser,
     Wallet,
+    WalletTransactionDirection,
 } from '@/@types/wallet'
 
 export function apiGetMyWallet() {
@@ -27,5 +29,18 @@ export function apiAdminCreditWallet(
         url: `/admin/wallets/${userId}/credit`,
         method: 'post',
         data,
+    })
+}
+
+export function apiAdminGetWalletTransactions(params?: {
+    userId?: number
+    direction?: WalletTransactionDirection
+    search?: string
+    limit?: number
+}) {
+    return ApiService.fetchDataWithAxios<AdminWalletTransaction[]>({
+        url: '/admin/wallets/transactions',
+        method: 'get',
+        params,
     })
 }

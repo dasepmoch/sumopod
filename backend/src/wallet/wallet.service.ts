@@ -8,6 +8,7 @@ import {
 } from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
 import { CreditWalletDto } from './dto/credit-wallet.dto'
+import { WalletTransactionsQueryDto } from './dto/wallet-transactions-query.dto'
 
 @Injectable()
 export class WalletService {
@@ -46,6 +47,58 @@ export class WalletService {
             where: { userId },
             orderBy: { id: 'desc' },
         })
+    }
+
+    async findTransactions(query: WalletTransactionsQueryDto) {
+        const search = query.search?.trim()
+        const where: Prisma.WalletTransactionWhereInput = {
+            ...(query.userId !== undefined && { userId: query.userId }),
+            ...(query.direction && { direction: query.direction }),
+            ...(search && {
+                user: {
+                    is: {
+                        OR: [
+                            { email: { contains: search } },
+                            { name: { contains: search } },
+                        ],
+                    },
+                },
+            }),
+        }
+
+        const transactions = await this.prisma.walletTransaction.findMany({
+            where,
+            select: {
+                id: true,
+                userId: true,
+                user: {
+                    select: {
+                        name: true,
+                        email: true,
+                    },
+                },
+                walletId: true,
+                wallet: {
+                    select: {
+                        currency: true,
+                    },
+                },
+                type: true,
+                direction: true,
+                amount: true,
+                description: true,
+                referenceType: true,
+                referenceId: true,
+                createdAt: true,
+            },
+            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+            take: query.limit ?? 50,
+        })
+
+        return transactions.map(({ wallet, ...transaction }) => ({
+            ...transaction,
+            currency: wallet.currency,
+        }))
     }
 
     async credit(userId: number, dto: CreditWalletDto) {
