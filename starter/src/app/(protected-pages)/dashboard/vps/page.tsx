@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import Card from '@/components/ui/Card'
+import { useCallback, useEffect, useState } from 'react'
+import Alert from '@/components/ui/Alert'
 import Button from '@/components/ui/Button'
-import Table from '@/components/ui/Table'
+import Card from '@/components/ui/Card'
 import Spinner from '@/components/ui/Spinner'
+import Table from '@/components/ui/Table'
 import { apiGetMyVps } from '@/services/VpsService'
 import { VpsStatusTag } from '../../_shared/StatusTag'
 import { formatDate } from '../../_shared/statusHelpers'
@@ -17,12 +18,25 @@ const MyVpsPage = () => {
     const router = useRouter()
     const [vps, setVps] = useState<VpsInstance[]>([])
     const [loading, setLoading] = useState(true)
+    const [error, setError] = useState(false)
+
+    const loadVps = useCallback(async () => {
+        setLoading(true)
+        setError(false)
+
+        try {
+            setVps(await apiGetMyVps())
+        } catch {
+            setVps([])
+            setError(true)
+        } finally {
+            setLoading(false)
+        }
+    }, [])
 
     useEffect(() => {
-        apiGetMyVps()
-            .then((data) => setVps(data))
-            .finally(() => setLoading(false))
-    }, [])
+        loadVps()
+    }, [loadVps])
 
     return (
         <div>
@@ -43,21 +57,37 @@ const MyVpsPage = () => {
                     <div className="flex justify-center py-16">
                         <Spinner size={40} />
                     </div>
+                ) : error ? (
+                    <div className="mx-auto max-w-xl py-8">
+                        <Alert
+                            type="danger"
+                            title="Unable to load VPS instances"
+                            showIcon
+                        >
+                            Check the backend connection and try again.
+                        </Alert>
+                        <div className="mt-4 flex justify-center">
+                            <Button onClick={loadVps}>Try again</Button>
+                        </div>
+                    </div>
                 ) : vps.length === 0 ? (
-                    <div className="text-center py-16 text-gray-500">
-                        You don&apos;t have any VPS yet.
+                    <div className="py-16 text-center text-gray-500">
+                        No VPS instances yet. Purchase a plan first.
                     </div>
                 ) : (
                     <Table>
                         <THead>
                             <Tr>
-                                <Th>VPS Name</Th>
+                                <Th>Hostname</Th>
                                 <Th>IP Address</Th>
-                                <Th>Provider</Th>
+                                <Th>OS</Th>
+                                <Th>Username</Th>
+                                <Th>Plan</Th>
                                 <Th>Region</Th>
                                 <Th>Status</Th>
-                                <Th>Expired</Th>
-                                <Th></Th>
+                                <Th>Created</Th>
+                                <Th>Expires</Th>
+                                <Th>Action</Th>
                             </Tr>
                         </THead>
                         <TBody>
@@ -67,11 +97,21 @@ const MyVpsPage = () => {
                                         {v.vpsName}
                                     </Td>
                                     <Td>{v.ipAddress || '-'}</Td>
-                                    <Td className="capitalize">{v.provider}</Td>
+                                    <Td>{v.operatingSystem || '-'}</Td>
+                                    <Td>{v.username || '-'}</Td>
+                                    <Td>
+                                        <div className="font-semibold">
+                                            {v.product?.name || '-'}
+                                        </div>
+                                        <div className="text-xs capitalize text-gray-500">
+                                            {v.provider}
+                                        </div>
+                                    </Td>
                                     <Td>{v.region || '-'}</Td>
                                     <Td>
                                         <VpsStatusTag status={v.status} />
                                     </Td>
+                                    <Td>{formatDate(v.createdAt)}</Td>
                                     <Td>{formatDate(v.expiredAt)}</Td>
                                     <Td>
                                         <Button
@@ -82,7 +122,7 @@ const MyVpsPage = () => {
                                                 )
                                             }
                                         >
-                                            Detail
+                                            View details
                                         </Button>
                                     </Td>
                                 </Tr>

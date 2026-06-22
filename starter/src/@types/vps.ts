@@ -109,5 +109,7 @@ export type VpsInstance = {
     status: VpsStatus
     expiredAt?: string | null
     createdAt: string
+    updatedAt?: string
+    product?: { id: number; name: string }
     user?: { id: number; name: string; email: string }
 }

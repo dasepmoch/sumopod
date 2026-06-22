@@ -1,11 +1,10 @@
 import {
     BadRequestException,
     ConflictException,
-    ForbiddenException,
     Injectable,
     NotFoundException,
 } from '@nestjs/common'
-import { OrderStatus, Prisma, VpsStatus } from '@prisma/client'
+import { OrderStatus, Prisma, Role, VpsStatus } from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
 import {
     ProvisionVpsFromOrderDto,
@@ -22,6 +21,34 @@ const STATUS_TRANSITIONS: Record<VpsStatus, VpsStatus[]> = {
     [VpsStatus.terminated]: [],
 }
 
+const USER_VPS_LIST_SELECT = {
+    id: true,
+    userId: true,
+    orderId: true,
+    productId: true,
+    vpsName: true,
+    provider: true,
+    region: true,
+    operatingSystem: true,
+    cpu: true,
+    ram: true,
+    storage: true,
+    bandwidth: true,
+    transfer: true,
+    ipAddress: true,
+    username: true,
+    status: true,
+    expiredAt: true,
+    createdAt: true,
+    updatedAt: true,
+    product: {
+        select: {
+            id: true,
+            name: true,
+        },
+    },
+} satisfies Prisma.VpsInstanceSelect
+
 @Injectable()
 export class VpsInstancesService {
     constructor(private prisma: PrismaService) {}
@@ -31,16 +58,20 @@ export class VpsInstancesService {
         return this.prisma.vpsInstance.findMany({
             where: { userId },
             orderBy: { id: 'desc' },
+            select: USER_VPS_LIST_SELECT,
         })
     }
 
     async findOne(userId: number, role: string, id: number) {
-        const vps = await this.prisma.vpsInstance.findUnique({ where: { id } })
+        const vps = await this.prisma.vpsInstance.findFirst({
+            where: role === Role.ADMIN ? { id } : { id, userId },
+            select: {
+                ...USER_VPS_LIST_SELECT,
+                password: true,
+            },
+        })
         if (!vps) {
             throw new NotFoundException('VPS not found')
-        }
-        if (role !== 'ADMIN' && vps.userId !== userId) {
-            throw new ForbiddenException('Not your VPS')
         }
         return vps
     }
