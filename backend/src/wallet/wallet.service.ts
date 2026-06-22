@@ -8,6 +8,7 @@ import {
 } from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
 import { CreditWalletDto } from './dto/credit-wallet.dto'
+import { MyWalletTransactionsQueryDto } from './dto/my-wallet-transactions-query.dto'
 import { WalletTransactionsQueryDto } from './dto/wallet-transactions-query.dto'
 
 @Injectable()
@@ -42,11 +43,36 @@ export class WalletService {
         })
     }
 
-    findMyTransactions(userId: number) {
-        return this.prisma.walletTransaction.findMany({
-            where: { userId },
-            orderBy: { id: 'desc' },
+    async findMyTransactions(
+        userId: number,
+        query: MyWalletTransactionsQueryDto,
+    ) {
+        const transactions = await this.prisma.walletTransaction.findMany({
+            where: {
+                userId,
+                ...(query.direction && { direction: query.direction }),
+            },
+            select: {
+                id: true,
+                walletId: true,
+                wallet: {
+                    select: {
+                        currency: true,
+                    },
+                },
+                direction: true,
+                amount: true,
+                description: true,
+                createdAt: true,
+            },
+            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+            take: query.limit ?? 50,
         })
+
+        return transactions.map(({ wallet, ...transaction }) => ({
+            ...transaction,
+            currency: wallet.currency,
+        }))
     }
 
     async findTransactions(query: WalletTransactionsQueryDto) {

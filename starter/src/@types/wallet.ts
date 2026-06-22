@@ -29,6 +29,16 @@ export type AdminWalletCreditResponse = {
 
 export type WalletTransactionDirection = 'CREDIT' | 'DEBIT'
 
+export type UserWalletTransaction = {
+    id: number
+    walletId: number
+    direction: WalletTransactionDirection
+    amount: string | number
+    currency: string
+    description?: string | null
+    createdAt: string
+}
+
 export type WalletTransactionType =
     | 'TOPUP'
     | 'PURCHASE'

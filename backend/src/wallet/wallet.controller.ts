@@ -14,6 +14,7 @@ import { Roles } from '../auth/decorators/roles.decorator'
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
 import { RolesGuard } from '../auth/guards/roles.guard'
 import { CreditWalletDto } from './dto/credit-wallet.dto'
+import { MyWalletTransactionsQueryDto } from './dto/my-wallet-transactions-query.dto'
 import { WalletTransactionsQueryDto } from './dto/wallet-transactions-query.dto'
 import { WalletService } from './wallet.service'
 
@@ -27,9 +28,12 @@ export class WalletController {
         return this.service.findMine(userId)
     }
 
-    @Get('transactions/my')
-    findMyTransactions(@CurrentUser('id') userId: number) {
-        return this.service.findMyTransactions(userId)
+    @Get(['transactions', 'transactions/my'])
+    findMyTransactions(
+        @CurrentUser('id') userId: number,
+        @Query() query: MyWalletTransactionsQueryDto,
+    ) {
+        return this.service.findMyTransactions(userId, query)
     }
 }
 

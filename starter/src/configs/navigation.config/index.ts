@@ -37,6 +37,16 @@ const navigationConfig: NavigationTree[] = [
         subMenu: [],
     },
     {
+        key: 'dashboard.wallet',
+        path: '/dashboard/wallet',
+        title: 'Wallet',
+        translateKey: 'nav.wallet',
+        icon: 'singleMenu',
+        type: NAV_ITEM_TYPE_ITEM,
+        authority: [],
+        subMenu: [],
+    },
+    {
         key: 'admin',
         path: '',
         title: 'Admin',

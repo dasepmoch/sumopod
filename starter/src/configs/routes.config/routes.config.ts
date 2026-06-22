@@ -22,6 +22,11 @@ export const protectedRoutes: Routes = {
         authority: [],
         meta: pageMeta,
     },
+    '/dashboard/wallet': {
+        key: 'dashboard.wallet',
+        authority: [],
+        meta: pageMeta,
+    },
     '/admin': {
         key: 'admin',
         authority: ['ADMIN'],
