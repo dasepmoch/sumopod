@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common'
 import {
     Prisma,
+    Role,
     WalletTransactionDirection,
     WalletTransactionStatus,
     WalletTransactionType,
@@ -11,6 +12,26 @@ import { CreditWalletDto } from './dto/credit-wallet.dto'
 @Injectable()
 export class WalletService {
     constructor(private prisma: PrismaService) {}
+
+    findUsers() {
+        return this.prisma.user.findMany({
+            where: { role: Role.USER },
+            select: {
+                id: true,
+                name: true,
+                email: true,
+                role: true,
+                wallet: {
+                    select: {
+                        balance: true,
+                        currency: true,
+                        updatedAt: true,
+                    },
+                },
+            },
+            orderBy: { email: 'asc' },
+        })
+    }
 
     findMine(userId: number) {
         return this.prisma.wallet.upsert({

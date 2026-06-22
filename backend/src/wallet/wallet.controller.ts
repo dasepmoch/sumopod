@@ -37,6 +37,11 @@ export class WalletController {
 export class AdminWalletController {
     constructor(private service: WalletService) {}
 
+    @Get()
+    findUsers() {
+        return this.service.findUsers()
+    }
+
     @Post(':userId/credit')
     credit(
         @Param('userId', ParseIntPipe) userId: number,

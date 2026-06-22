@@ -47,6 +47,11 @@ export const protectedRoutes: Routes = {
         authority: ['ADMIN'],
         meta: pageMeta,
     },
+    '/admin/wallets': {
+        key: 'admin.wallets',
+        authority: ['ADMIN'],
+        meta: pageMeta,
+    },
 }
 
 export const publicRoutes: Routes = {}
